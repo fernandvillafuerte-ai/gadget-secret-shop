@@ -1,0 +1,948 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Gadget Secret Shop</title>
+<style>
+/* ======================================================================
+   DESIGN PLAN
+   Layout: fixed left rail (nav + connection status) + scrollable content
+   pane; content pane swaps between five views (dashboard, inventory,
+   new sale, sales history, suppliers) with a sticky view header holding
+   the page title and primary action.
+   ====================================================================== */
+:root{
+  /* light (default) */
+  --bg:#F6F5F1;
+  --surface:#FFFFFF;
+  --surface-2:#EFEEE9;
+  --fg:#17191B;
+  --muted:#6B7177;
+  --line:#E3E1DA;
+  --accent:#2F6F5E;
+  --accent-fg:#FFFFFF;
+  --accent-soft:#E4EFEA;
+  --good:#2F8F5B;
+  --good-soft:#E3F3E9;
+  --warn:#9A6B07;
+  --warn-soft:#FBF0D9;
+  --critical:#B23A2E;
+  --critical-soft:#FBE7E4;
+  --font-display:'Sora',system-ui,sans-serif;
+  --font-body:'IBM Plex Sans',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+  --shadow:0 1px 2px rgba(23,25,27,.06),0 1px 1px rgba(23,25,27,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15171A; --surface:#1C1F23; --surface-2:#22262B;
+    --fg:#EDEEEE; --muted:#9BA1A7; --line:#2C3035;
+    --accent:#5FB69B; --accent-fg:#0D1512; --accent-soft:#1E2E29;
+    --good:#5FB69B; --good-soft:#1C2B24;
+    --warn:#D8A63E; --warn-soft:#2E2510;
+    --critical:#E2776A; --critical-soft:#301E1B;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15171A; --surface:#1C1F23; --surface-2:#22262B;
+  --fg:#EDEEEE; --muted:#9BA1A7; --line:#2C3035;
+  --accent:#5FB69B; --accent-fg:#0D1512; --accent-soft:#1E2E29;
+  --good:#5FB69B; --good-soft:#1C2B24;
+  --warn:#D8A63E; --warn-soft:#2E2510;
+  --critical:#E2776A; --critical-soft:#301E1B;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);line-height:1.45}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+.num,code,.mono{font-family:var(--font-mono)}
+table{font-variant-numeric:tabular-nums}
+button{font-family:inherit}
+a{color:var(--accent)}
+::selection{background:var(--accent-soft)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- shell ---------- */
+.shell{display:flex;min-height:100vh;width:100%}
+.rail{
+  width:232px;flex:0 0 232px;background:var(--surface);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;gap:4px;
+  padding:18px 14px calc(16px + env(safe-area-inset-bottom,0px));
+  position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 18px}
+.brand-mark{
+  width:30px;height:30px;border-radius:8px;background:var(--accent);
+  color:var(--accent-fg);display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-display);font-weight:700;font-size:15px;flex:0 0 auto;
+}
+.brand-name{font-family:var(--font-display);font-weight:700;font-size:16px}
+.brand-sub{font-size:11px;color:var(--muted);margin-top:-2px}
+.nav-group{display:flex;flex-direction:column;gap:2px;margin-bottom:14px}
+.nav-label{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:10px 10px 4px}
+.nav-btn{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:9px 10px;border-radius:8px;border:none;background:transparent;
+  color:var(--fg);font-size:13.5px;cursor:pointer;transition:background .12s;
+}
+.nav-btn:hover{background:var(--surface-2)}
+.nav-btn[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav-ico{width:17px;height:17px;flex:0 0 auto}
+.rail-foot{margin-top:auto;padding-top:12px;border-top:1px solid var(--line)}
+.conn{
+  display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;
+  background:var(--surface-2);font-size:12px;cursor:pointer;border:none;width:100%;
+  color:var(--fg);text-align:left;
+}
+.dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.dot.live{background:var(--good)}
+.dot.demo{background:var(--warn)}
+
+/* ---------- main ---------- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{
+  position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);
+  border-bottom:1px solid var(--line);padding:16px 28px;
+  display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;
+}
+.topbar h1{font-size:19px}
+.topbar p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+.view{padding:22px 28px 60px;max-width:1180px}
+.view[hidden]{display:none!important}
+
+/* ---------- primitives ---------- */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;border-radius:7px;border:1px solid var(--line);
+  background:var(--surface);color:var(--fg);padding:8px 14px;font-size:13px;cursor:pointer;
+  transition:border-color .12s,background .12s;white-space:nowrap;
+}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn.primary:hover{opacity:.92}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.input,select{
+  background:var(--surface);border:1px solid var(--line);border-radius:7px;color:var(--fg);
+  padding:8px 10px;font-size:13px;font-family:inherit;width:100%;
+}
+.input:focus,select:focus{border-color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11.5px;font-weight:600}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.crit{background:var(--critical-soft);color:var(--critical)}
+.pill.neutral{background:var(--surface-2);color:var(--muted)}
+
+/* ---------- dashboard ---------- */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.kpi{padding:16px 18px}
+.kpi-label{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.kpi-val{font-family:var(--font-mono);font-size:25px;font-weight:600;margin-top:6px}
+.kpi-delta{font-size:12px;margin-top:4px}
+.kpi-delta.up{color:var(--good)}
+.kpi-delta.down{color:var(--critical)}
+.dash-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:start}
+.panel{padding:18px 20px}
+.panel h3{font-size:14.5px;margin-bottom:2px}
+.panel .sub{font-size:12px;color:var(--muted);margin-bottom:14px}
+.low-stock-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.low-stock-row:last-child{border-bottom:none}
+
+/* ---------- tables ---------- */
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+th,td{padding:10px 14px;text-align:left;white-space:nowrap}
+thead th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+tbody tr{border-bottom:1px solid var(--line)}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+td.num{font-family:var(--font-mono)}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.toolbar .input{max-width:240px}
+.toolbar select{max-width:160px}
+.pager{display:flex;align-items:center;gap:10px;justify-content:flex-end;padding:12px 14px;font-size:12.5px;color:var(--muted)}
+
+/* ---------- new sale ---------- */
+.sale-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:start}
+.catalog-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.catalog-item:last-child{border-bottom:none}
+.catalog-item .meta{min-width:0}
+.catalog-item .meta .name{font-size:13.5px;font-weight:600}
+.catalog-item .meta .sub{font-size:11.5px;color:var(--muted);font-family:var(--font-mono)}
+.cart-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.cart-row:last-child{border-bottom:none}
+.cart-empty{padding:26px 10px;text-align:center;color:var(--muted);font-size:13px}
+.totals-row{display:flex;justify-content:space-between;font-size:13px;padding:4px 0}
+.totals-row.grand{font-size:16px;font-weight:700;padding-top:10px;border-top:1px solid var(--line);margin-top:6px}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+label{font-size:11.5px;color:var(--muted);display:block;margin-bottom:4px}
+
+/* ---------- misc ---------- */
+.banner{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;border-radius:9px;background:var(--warn-soft);color:var(--warn);font-size:12.5px;margin-bottom:18px}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
+.modal-backdrop[hidden]{display:none!important}
+.modal{background:var(--surface);border-radius:14px;max-width:460px;width:100%;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.modal h3{margin-bottom:4px}
+.modal .sub{font-size:12.5px;color:var(--muted);margin-bottom:16px}
+.toast{position:fixed;bottom:18px;right:18px;background:var(--fg);color:var(--bg);padding:11px 16px;border-radius:9px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:60;max-width:320px}
+.toast[hidden]{display:none!important}
+.svg-chart text{fill:var(--muted);font-family:var(--font-mono);font-size:9px}
+.sup-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+@media (max-width:760px){
+  .rail{position:fixed;left:0;right:0;bottom:0;top:auto;height:auto;width:100%;flex-direction:row;
+    border-right:none;border-top:1px solid var(--line);padding:8px 6px calc(8px + env(safe-area-inset-bottom,0px));
+    overflow-x:auto;z-index:20;}
+  .brand,.nav-label,.rail-foot{display:none}
+  .nav-group{flex-direction:row;margin-bottom:0}
+  .nav-btn{flex-direction:column;gap:3px;font-size:10px;padding:7px 10px}
+  .main{padding-bottom:64px}
+  .kpi-grid,.dash-grid,.sale-grid,.sup-grid{grid-template-columns:1fr}
+  .field-row{grid-template-columns:1fr}
+  .view{padding:18px 16px 40px}
+  .topbar{padding:14px 16px}
+}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+
+<div class="shell">
+  <nav class="rail">
+    <div class="brand">
+      <div class="brand-mark">G</div>
+      <div>
+        <div class="brand-name">Gadget Secret Shop</div>
+        <div class="brand-sub">Cellphone inventory & sales</div>
+      </div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Overview</div>
+      <button class="nav-btn" data-view="dashboard" aria-current="page">
+        <svg class="nav-ico" viewBox="0 0 20 20" fill="none"><rect x="2.5" y="2.5" width="6" height="7" rx="1.3" stroke="currentColor" stroke-width="1.5"/><rect x="11.5" y="2.5" width="6" height="4" rx="1.3" stroke="currentColor" stroke-width="1.5"/><rect x="11.5" y="9" width="6" height="8.5" rx="1.3" stroke="currentColor" stroke-width="1.5"/><rect x="2.5" y="12" width="6" height="5.5" rx="1.3" stroke="currentColor" stroke-width="1.5"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-btn" data-view="inventory">
+        <svg class="nav-ico" viewBox="0 0 20 20" fill="none"><path d="M3 6.2 10 2.5l7 3.7v7.6L10 17.5l-7-3.7V6.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M3 6.2 10 9.8l7-3.6M10 9.8v7.7" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        Inventory
+      </button>
+      <button class="nav-btn" data-view="sale">
+        <svg class="nav-ico" viewBox="0 0 20 20" fill="none"><circle cx="7.5" cy="16" r="1.4" stroke="currentColor" stroke-width="1.4"/><circle cx="14.5" cy="16" r="1.4" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 3h2l1.8 9.6a1.6 1.6 0 0 0 1.58 1.3h6.6a1.6 1.6 0 0 0 1.57-1.27L17.5 6.5H5.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        New sale
+      </button>
+      <button class="nav-btn" data-view="sales">
+        <svg class="nav-ico" viewBox="0 0 20 20" fill="none"><path d="M3 17V9.5M8 17V4M13 17v-6M18 17V7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        Sales history
+      </button>
+      <button class="nav-btn" data-view="suppliers">
+        <svg class="nav-ico" viewBox="0 0 20 20" fill="none"><path d="M3 16.5V8l7-4.5 7 4.5v8.5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M7.5 16.5v-5h5v5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        Suppliers
+      </button>
+    </div>
+    <div class="rail-foot">
+      <button class="conn" id="connBtn">
+        <span class="dot demo" id="connDot"></span>
+        <span id="connLabel">Demo data — not connected</span>
+      </button>
+      <button class="conn" id="signOutBtn" hidden style="margin-top:6px">Sign out</button>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="viewTitle">Dashboard</h1>
+        <p id="viewSub">Store performance at a glance</p>
+      </div>
+      <div id="topbarAction"></div>
+    </div>
+
+    <!-- ===================== DASHBOARD ===================== -->
+    <section class="view" id="view-dashboard">
+      <div id="demoBanner" class="banner">
+        <strong>Demo mode.</strong>&nbsp;Showing generated sample data. Click “Demo data — not connected” in the sidebar to paste your Supabase URL and anon key and switch to live data.
+      </div>
+      <div class="kpi-grid">
+        <div class="card kpi"><div class="kpi-label">Units in stock</div><div class="kpi-val num" id="kpiStock">—</div><div class="kpi-delta" id="kpiStockSub"></div></div>
+        <div class="card kpi"><div class="kpi-label">Inventory cost value</div><div class="kpi-val num" id="kpiValue">—</div><div class="kpi-delta" id="kpiValueSub"></div></div>
+        <div class="card kpi"><div class="kpi-label">Sales — last 7 days</div><div class="kpi-val num" id="kpiSales">—</div><div class="kpi-delta up" id="kpiSalesSub"></div></div>
+        <div class="card kpi"><div class="kpi-label">Profit — last 7 days</div><div class="kpi-val num" id="kpiProfit">—</div><div class="kpi-delta up" id="kpiProfitSub"></div></div>
+      </div>
+      <div class="dash-grid">
+        <div class="card panel">
+          <h3>Revenue, last 7 days</h3>
+          <div class="sub">Daily totals from the sales ledger</div>
+          <svg class="svg-chart" id="trendChart" viewBox="0 0 560 190" width="100%" height="190"></svg>
+        </div>
+        <div class="card panel">
+          <h3>Low stock</h3>
+          <div class="sub">5 units or fewer remaining</div>
+          <div id="lowStockList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== INVENTORY ===================== -->
+    <section class="view" id="view-inventory" hidden>
+      <div class="toolbar">
+        <input class="input" id="invSearch" placeholder="Search brand, model, SKU or IMEI…">
+        <select id="invBrand"><option value="">All brands</option></select>
+        <select id="invStatus">
+          <option value="">All statuses</option>
+          <option value="in_stock">In stock</option>
+          <option value="reserved">Reserved</option>
+          <option value="sold">Sold</option>
+          <option value="defective">Defective</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Brand / model</th><th>SKU</th><th>IMEI</th><th>Status</th>
+            <th>Cost</th><th>Price</th><th>Stock</th><th>Supplier</th>
+          </tr></thead>
+          <tbody id="invBody"></tbody>
+        </table>
+        <div class="pager">
+          <span id="invRange">—</span>
+          <button class="btn ghost" id="invPrev">← Prev</button>
+          <button class="btn ghost" id="invNext">Next →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== NEW SALE ===================== -->
+    <section class="view" id="view-sale" hidden>
+      <div class="sale-grid">
+        <div class="card panel">
+          <h3>Add items</h3>
+          <div class="sub">Only in-stock units are shown</div>
+          <input class="input" id="saleSearch" placeholder="Search brand, model or IMEI…" style="margin-bottom:10px">
+          <div id="saleCatalog" style="max-height:420px;overflow-y:auto"></div>
+        </div>
+        <div class="card panel">
+          <h3>Current ticket</h3>
+          <div class="sub" id="cartCount">0 items</div>
+          <div id="cartList"><div class="cart-empty">Add a product from the left to start a sale.</div></div>
+          <div style="margin-top:12px">
+            <div class="totals-row"><span>Subtotal</span><span class="num" id="sumSubtotal">₱0.00</span></div>
+            <div class="totals-row">
+              <span>Discount</span>
+              <input class="input" id="sumDiscount" type="number" min="0" value="0" style="width:110px;text-align:right">
+            </div>
+            <div class="totals-row grand"><span>Total</span><span class="num" id="sumTotal">₱0.00</span></div>
+          </div>
+          <div class="field-row" style="margin-top:14px">
+            <div><label for="custName">Customer name</label><input class="input" id="custName" placeholder="Walk-in"></div>
+            <div><label for="custPhone">Contact no.</label><input class="input" id="custPhone" placeholder="Optional"></div>
+          </div>
+          <div class="field-row">
+            <div>
+              <label for="payMethod">Payment method</label>
+              <select id="payMethod"><option value="cash">Cash</option><option value="gcash">GCash</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option></select>
+            </div>
+            <div><label for="cashier">Cashier</label><input class="input" id="cashier" placeholder="Your name"></div>
+          </div>
+          <button class="btn primary" id="checkoutBtn" style="width:100%;justify-content:center;margin-top:6px">Complete sale</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== SALES HISTORY ===================== -->
+    <section class="view" id="view-sales" hidden>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Receipt</th><th>Date</th><th>Customer</th><th>Payment</th>
+            <th>Items</th><th>Total</th><th>Profit</th>
+          </tr></thead>
+          <tbody id="salesBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== SUPPLIERS ===================== -->
+    <section class="view" id="view-suppliers" hidden>
+      <div class="sup-grid" id="supGrid"></div>
+    </section>
+  </div>
+</div>
+
+<!-- connection modal -->
+<div class="modal-backdrop" id="connModal" hidden>
+  <div class="modal">
+    <h3>Connect to Supabase</h3>
+    <div class="sub">Paste the Project URL and anon public key from Settings → API in your Supabase project. Stored only in this browser.</div>
+    <label for="supaUrl">Project URL</label>
+    <input class="input" id="supaUrl" placeholder="https://xxxxxxxx.supabase.co" style="margin-bottom:10px">
+    <label for="supaKey">Anon public key</label>
+    <input class="input" id="supaKey" placeholder="eyJhbGciOi..." style="margin-bottom:16px">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn ghost" id="connCancel">Cancel</button>
+      <button class="btn" id="connDemo">Use demo data</button>
+      <button class="btn primary" id="connSave">Connect</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<!-- staff sign-in gate (live mode only; demo mode skips this) -->
+<div class="modal-backdrop" id="authScreen" hidden style="background:var(--bg);z-index:55">
+  <div class="modal" style="max-width:380px">
+    <h3>Staff sign-in</h3>
+    <div class="sub">Sign in with the account your store admin set up for you in Supabase.</div>
+    <label for="authEmail">Email</label>
+    <input class="input" id="authEmail" type="email" placeholder="you@yourstore.com" autocomplete="username" style="margin-bottom:10px">
+    <label for="authPassword">Password</label>
+    <input class="input" id="authPassword" type="password" placeholder="••••••••" autocomplete="current-password" style="margin-bottom:6px">
+    <div id="authError" style="color:var(--critical);font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <button class="btn primary" id="authSubmit" style="width:100%;justify-content:center">Sign in</button>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:12px">
+      No account yet? Ask whoever manages your Supabase project to add one under Authentication → Users, or click “Use demo data” in the connect window to try the app without signing in.
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   DATA LAYER
+   Every function in `db` talks to Supabase (via @supabase/supabase-js,
+   loaded below) when the viewer has connected a project, and falls
+   back to generated demo data otherwise. The Supabase code paths here
+   are the real implementation — copy this file's CONFIG + db object
+   straight into your deployed app.
+   ===================================================================== */
+const CONFIG = { url: '', anonKey: '' };
+let supa = null;
+
+function loadSupabaseConfig(){
+  try{
+    const saved = JSON.parse(localStorage.getItem('stockline_supabase') || 'null');
+    if (saved && saved.url && saved.anonKey){ CONFIG.url = saved.url; CONFIG.anonKey = saved.anonKey; }
+  }catch(e){}
+}
+function initSupabaseClient(){
+  if (CONFIG.url && CONFIG.anonKey && window.supabase && window.supabase.createClient){
+    try{ supa = window.supabase.createClient(CONFIG.url, CONFIG.anonKey); return true; }
+    catch(e){ console.warn('Supabase init failed, using demo data', e); }
+  }
+  supa = null;
+  return false;
+}
+
+const PAGE_SIZE = 10;
+
+/* ---------- demo dataset (used until a project is connected) ---------- */
+const BRANDS = {
+  Apple: ['iPhone 15', 'iPhone 15 Pro', 'iPhone 14', 'iPhone 13', 'iPhone SE'],
+  Samsung: ['Galaxy S24', 'Galaxy S23', 'Galaxy A55', 'Galaxy Z Flip5', 'Galaxy A14'],
+  Xiaomi: ['Redmi Note 13', 'Redmi 13C', 'Poco X6', 'Mi 11 Lite'],
+  Oppo: ['Reno11', 'A98', 'A18'],
+  Vivo: ['V30', 'Y28', 'Y02']
+};
+function seededRand(seed){ let s = seed; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
+const rand = seededRand(42);
+function genDemoProducts(n){
+  const suppliers = ['TechSource Distribution', 'MobileHub Wholesale', 'Metro Gadget Supply'];
+  const list = [];
+  const brandNames = Object.keys(BRANDS);
+  for (let i = 0; i < n; i++){
+    const brand = brandNames[Math.floor(rand() * brandNames.length)];
+    const models = BRANDS[brand];
+    const model = models[Math.floor(rand() * models.length)];
+    const cost = Math.round((5000 + rand() * 45000) / 50) * 50;
+    const margin = 0.10 + rand() * 0.18;
+    const price = Math.round((cost * (1 + margin)) / 50) * 50;
+    const stock = rand() < 0.12 ? Math.floor(rand() * 3) : Math.floor(2 + rand() * 10);
+    const status = stock === 0 ? 'sold' : (rand() < 0.03 ? 'defective' : (rand() < 0.05 ? 'reserved' : 'in_stock'));
+    list.push({
+      product_id: 'demo-' + i,
+      sku: brand.slice(0,3).toUpperCase() + '-' + (1000 + i),
+      imei: '35' + String(100000000000000 + Math.floor(rand() * 8999999999999)).slice(0,13),
+      brand, model,
+      variant: ['128GB', '256GB', '512GB'][Math.floor(rand()*3)] + ' / ' + ['Black','Blue','Titanium','Silver'][Math.floor(rand()*4)],
+      cost_price: cost, selling_price: price,
+      stock_quantity: stock, status,
+      supplier: suppliers[Math.floor(rand() * suppliers.length)],
+      date_acquired: new Date(Date.now() - Math.floor(rand()*60)*86400000).toISOString().slice(0,10)
+    });
+  }
+  return list;
+}
+const DEMO_PRODUCTS = genDemoProducts(312); // stands in for a 10,000+ row table
+
+function genDemoSales(){
+  const names = ['Walk-in','Marie Santos','J. Dela Cruz','Resty Gomez','Walk-in','Angel Reyes','Walk-in','K. Tan'];
+  const pay = ['cash','gcash','card','bank_transfer'];
+  const out = [];
+  for (let i = 0; i < 26; i++){
+    const daysAgo = Math.floor(rand() * 14);
+    const items = 1 + Math.floor(rand() * 2);
+    const p = DEMO_PRODUCTS[Math.floor(rand() * DEMO_PRODUCTS.length)];
+    const total = p.selling_price * items;
+    const profit = (p.selling_price - p.cost_price) * items;
+    out.push({
+      sale_id: 'demo-sale-' + i,
+      transaction_code: 'INV-' + new Date(Date.now()-daysAgo*86400000).toISOString().slice(0,10).replace(/-/g,'') + '-' + String(1000+i),
+      sold_at: new Date(Date.now() - daysAgo*86400000 - Math.floor(rand()*8)*3600000).toISOString(),
+      customer_name: names[Math.floor(rand()*names.length)],
+      payment_method: pay[Math.floor(rand()*pay.length)],
+      item_count: items, total_amount: total, total_profit: profit
+    });
+  }
+  return out.sort((a,b)=> new Date(b.sold_at) - new Date(a.sold_at));
+}
+const DEMO_SALES = genDemoSales();
+const DEMO_SUPPLIERS = [
+  { name:'TechSource Distribution', contact_person:'Ramon Alvarez', phone:'0917 220 4411', email:'sales@techsource.ph', address:'Binondo, Manila' },
+  { name:'MobileHub Wholesale', contact_person:'Grace Lim', phone:'0920 884 1190', email:'orders@mobilehub.ph', address:'Greenhills, San Juan' },
+  { name:'Metro Gadget Supply', contact_person:'Noel Ferrer', phone:'0908 331 7765', email:'noel@metrogadget.ph', address:'Cubao, Quezon City' }
+];
+
+/* ---------- unified data access ---------- */
+const db = {
+  async fetchProducts({ search = '', brand = '', status = '', page = 0 } = {}){
+    if (supa){
+      // ---- REAL SUPABASE CALL ----
+      let query = supa.from('products').select('*', { count: 'exact' });
+      if (search) query = query.or(`brand.ilike.%${search}%,model.ilike.%${search}%,sku.ilike.%${search}%,imei.ilike.%${search}%`);
+      if (brand) query = query.eq('brand', brand);
+      if (status) query = query.eq('status', status);
+      const from = page * PAGE_SIZE, to = from + PAGE_SIZE - 1;
+      const { data, count, error } = await query.order('brand').range(from, to);
+      if (error) throw error;
+      return { rows: data, total: count ?? 0 };
+    }
+    // ---- demo fallback ----
+    let rows = DEMO_PRODUCTS;
+    if (search){
+      const q = search.toLowerCase();
+      rows = rows.filter(p => [p.brand,p.model,p.sku,p.imei].some(v => String(v).toLowerCase().includes(q)));
+    }
+    if (brand) rows = rows.filter(p => p.brand === brand);
+    if (status) rows = rows.filter(p => p.status === status);
+    const total = rows.length;
+    rows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+    return { rows, total };
+  },
+
+  async fetchAllBrands(){
+    if (supa){
+      const { data, error } = await supa.from('products').select('brand').limit(1000);
+      if (error) throw error;
+      return [...new Set(data.map(d => d.brand))].sort();
+    }
+    return [...new Set(DEMO_PRODUCTS.map(p => p.brand))].sort();
+  },
+
+  async fetchInStock(search = ''){
+    if (supa){
+      let query = supa.from('products').select('*').eq('status','in_stock').gt('stock_quantity', 0).limit(40);
+      if (search) query = query.or(`brand.ilike.%${search}%,model.ilike.%${search}%,imei.ilike.%${search}%`);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    }
+    let rows = DEMO_PRODUCTS.filter(p => p.status === 'in_stock' && p.stock_quantity > 0);
+    if (search){ const q = search.toLowerCase(); rows = rows.filter(p => [p.brand,p.model,p.imei].some(v => String(v).toLowerCase().includes(q))); }
+    return rows.slice(0, 40);
+  },
+
+  async createSale({ cashier, customerName, customerContact, paymentMethod, discount, items }){
+    const transactionCode = 'INV-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(1000 + Math.random()*8999);
+    if (supa){
+      // ---- REAL SUPABASE CALL ----
+      // Calls the `create_sale` Postgres function (see schema.sql), which
+      // inserts the sale header, every line item, and decrements stock
+      // inside a single database transaction — so a failure anywhere
+      // (e.g. insufficient stock) rolls the whole sale back.
+      const { data, error } = await supa.rpc('create_sale', {
+        p_transaction_code: transactionCode,
+        p_cashier: cashier || null,
+        p_customer_name: customerName || 'Walk-in',
+        p_customer_contact: customerContact || null,
+        p_payment_method: paymentMethod,
+        p_discount: discount || 0,
+        p_items: items.map(i => ({ product_id: i.product_id, quantity: i.qty, unit_price: i.selling_price }))
+      });
+      if (error) throw error;
+      return { saleId: data, transactionCode };
+    }
+    // ---- demo fallback: mutate the in-memory table the same way the RPC would ----
+    for (const line of items){
+      const p = DEMO_PRODUCTS.find(p => p.product_id === line.product_id);
+      if (!p) continue;
+      if (p.stock_quantity < line.qty) throw new Error(`Insufficient stock for ${p.brand} ${p.model}`);
+      p.stock_quantity -= line.qty;
+      if (p.stock_quantity <= 0) p.status = 'sold';
+    }
+    const total = items.reduce((s,i)=> s + i.selling_price * i.qty, 0) - (discount||0);
+    const profit = items.reduce((s,i)=> s + (i.selling_price - i.cost_price) * i.qty, 0) - (discount||0);
+    DEMO_SALES.unshift({
+      sale_id: 'demo-sale-' + DEMO_SALES.length, transaction_code: transactionCode,
+      sold_at: new Date().toISOString(), customer_name: customerName || 'Walk-in',
+      payment_method: paymentMethod, item_count: items.length, total_amount: total, total_profit: profit
+    });
+    return { saleId: 'demo-sale-' + (DEMO_SALES.length-1), transactionCode };
+  },
+
+  async fetchSales(){
+    if (supa){
+      const { data, error } = await supa
+        .from('sales')
+        .select('sale_id, transaction_code, sold_at, customer_name, payment_method, total_amount, total_profit, sale_items(count)')
+        .order('sold_at', { ascending:false })
+        .limit(50);
+      if (error) throw error;
+      return data.map(s => ({ ...s, item_count: s.sale_items?.[0]?.count ?? 0 }));
+    }
+    return DEMO_SALES;
+  },
+
+  async fetchSuppliers(){
+    if (supa){
+      const { data, error } = await supa.from('suppliers').select('*').order('name');
+      if (error) throw error;
+      return data;
+    }
+    return DEMO_SUPPLIERS;
+  }
+};
+
+/* =====================================================================
+   UI STATE + RENDERING
+   ===================================================================== */
+const state = { view:'dashboard', invPage:0, invTotal:0, cart:[] };
+const peso = n => '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t); toast._t = setTimeout(()=> t.hidden = true, 3200);
+}
+
+function statusPill(status){
+  const map = { in_stock:['good','In stock'], reserved:['warn','Reserved'], sold:['neutral','Sold'], defective:['crit','Defective'], returned:['warn','Returned'] };
+  const [cls,label] = map[status] || ['neutral', status];
+  return `<span class="pill ${cls}">${label}</span>`;
+}
+
+async function switchView(view){
+  state.view = view;
+  document.querySelectorAll('.nav-btn').forEach(b => b.toggleAttribute('aria-current', b.dataset.view === view) );
+  document.querySelectorAll('.nav-btn').forEach(b => b.dataset.view === view ? b.setAttribute('aria-current','page') : b.removeAttribute('aria-current'));
+  document.querySelectorAll('.view').forEach(v => v.hidden = v.id !== `view-${view}`);
+  const titles = {
+    dashboard: ['Dashboard','Store performance at a glance'],
+    inventory: ['Inventory','Every unit currently tracked, searchable by SKU or IMEI'],
+    sale: ['New sale','Build a ticket and check out'],
+    sales: ['Sales history','Recent transactions, newest first'],
+    suppliers: ['Suppliers','Where your stock comes from']
+  };
+  $('#viewTitle').textContent = titles[view][0];
+  $('#viewSub').textContent = titles[view][1];
+  if (view === 'dashboard') await renderDashboard();
+  if (view === 'inventory') await renderInventory();
+  if (view === 'sale') await renderSaleCatalog();
+  if (view === 'sales') await renderSalesHistory();
+  if (view === 'suppliers') await renderSuppliers();
+}
+
+/* ---------- dashboard ---------- */
+async function renderDashboard(){
+  $('#demoBanner').hidden = !!supa;
+  // KPIs need the full table, not one paginated page — a real deployment
+  // with 10,000+ rows should instead call an aggregate RPC (SUM/COUNT in
+  // Postgres) rather than pulling every row to the browser.
+  const products = supa ? (await db.fetchProducts({ page:0 })).rows : DEMO_PRODUCTS;
+  const inStock = products.filter(p => p.status === 'in_stock');
+  const totalUnits = inStock.reduce((s,p)=> s + p.stock_quantity, 0);
+  const totalValue = inStock.reduce((s,p)=> s + p.cost_price * p.stock_quantity, 0);
+  $('#kpiStock').textContent = totalUnits.toLocaleString();
+  $('#kpiStockSub').textContent = `${inStock.length} SKUs in stock`;
+  $('#kpiValue').textContent = peso(totalValue);
+  $('#kpiValueSub').textContent = 'at cost';
+
+  const sales = await db.fetchSales();
+  const cutoff = Date.now() - 7*86400000;
+  const recent = sales.filter(s => new Date(s.sold_at).getTime() >= cutoff);
+  const revenue = recent.reduce((s,r)=> s + Number(r.total_amount), 0);
+  const profit = recent.reduce((s,r)=> s + Number(r.total_profit), 0);
+  $('#kpiSales').textContent = peso(revenue);
+  $('#kpiSalesSub').textContent = `${recent.length} transactions`;
+  $('#kpiProfit').textContent = peso(profit);
+  $('#kpiProfitSub').textContent = revenue ? Math.round(profit/revenue*100) + '% margin' : '—';
+
+  // trend chart — daily revenue, last 7 days, drawn to scale
+  const days = [...Array(7)].map((_,i)=>{
+    const d = new Date(Date.now() - (6-i)*86400000);
+    const key = d.toISOString().slice(0,10);
+    const total = sales.filter(s => s.sold_at.slice(0,10) === key).reduce((s,r)=> s + Number(r.total_amount), 0);
+    return { label: d.toLocaleDateString('en-PH',{ weekday:'short' }), total };
+  });
+  drawTrendChart(days);
+
+  const low = products.filter(p => p.status==='in_stock' && p.stock_quantity <= 5).sort((a,b)=> a.stock_quantity - b.stock_quantity).slice(0,6);
+  $('#lowStockList').innerHTML = low.length ? low.map(p => `
+    <div class="low-stock-row">
+      <span>${esc(p.brand)} ${esc(p.model)}</span>
+      <span class="pill ${p.stock_quantity<=1?'crit':'warn'}">${p.stock_quantity} left</span>
+    </div>`).join('') : '<div class="low-stock-row"><span style="color:var(--muted)">Nothing low on stock.</span></div>';
+}
+
+function drawTrendChart(days){
+  const w = 560, h = 190, padL = 34, padB = 22, padT = 12, padR = 10;
+  const max = Math.max(1, ...days.map(d=>d.total));
+  const bw = (w - padL - padR) / days.length;
+  const scaleY = v => (h - padB) - (v/max) * (h - padB - padT);
+  let bars = '', labels = '';
+  days.forEach((d,i)=>{
+    const x = padL + i*bw + bw*0.18;
+    const bWidth = bw*0.64;
+    const y = scaleY(d.total);
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bWidth.toFixed(1)}" height="${(h-padB-y).toFixed(1)}" rx="3" fill="var(--accent)" opacity="${d.total? 1 : .25}"/>`;
+    labels += `<text x="${(x+bWidth/2).toFixed(1)}" y="${h-6}" text-anchor="middle">${d.label}</text>`;
+  });
+  const gridY = scaleY(max);
+  const svg = `
+    <line x1="${padL}" y1="${gridY.toFixed(1)}" x2="${w-padR}" y2="${gridY.toFixed(1)}" stroke="var(--line)" stroke-dasharray="3 3"/>
+    <text x="${padL-6}" y="${(gridY+3).toFixed(1)}" text-anchor="end">${Math.round(max).toLocaleString()}</text>
+    ${bars}${labels}
+    <line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="var(--line)"/>`;
+  $('#trendChart').innerHTML = svg;
+}
+
+/* ---------- inventory ---------- */
+async function populateBrandFilter(){
+  const sel = $('#invBrand');
+  if (sel.dataset.loaded) return;
+  const brands = await db.fetchAllBrands();
+  sel.insertAdjacentHTML('beforeend', brands.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join(''));
+  sel.dataset.loaded = '1';
+}
+async function renderInventory(){
+  await populateBrandFilter();
+  const { rows, total } = await db.fetchProducts({
+    search: $('#invSearch').value.trim(),
+    brand: $('#invBrand').value,
+    status: $('#invStatus').value,
+    page: state.invPage
+  });
+  state.invTotal = total;
+  $('#invBody').innerHTML = rows.map(p => `
+    <tr>
+      <td><strong>${esc(p.brand)}</strong> ${esc(p.model)}<br><span style="color:var(--muted);font-size:11.5px">${esc(p.variant||'')}</span></td>
+      <td class="num">${esc(p.sku)}</td>
+      <td class="num">${esc(p.imei||'—')}</td>
+      <td>${statusPill(p.status)}</td>
+      <td class="num">${peso(p.cost_price)}</td>
+      <td class="num">${peso(p.selling_price)}</td>
+      <td class="num">${p.stock_quantity}</td>
+      <td>${esc(p.supplier || p.supplier_id || '—')}</td>
+    </tr>`).join('') || `<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:30px">No products match.</td></tr>`;
+  const from = total ? state.invPage*PAGE_SIZE + 1 : 0;
+  const to = Math.min(total, state.invPage*PAGE_SIZE + PAGE_SIZE);
+  $('#invRange').textContent = `${from}–${to} of ${total.toLocaleString()}`;
+  $('#invPrev').disabled = state.invPage === 0;
+  $('#invNext').disabled = to >= total;
+}
+
+/* ---------- new sale ---------- */
+async function renderSaleCatalog(){
+  const items = await db.fetchInStock($('#saleSearch').value.trim());
+  $('#saleCatalog').innerHTML = items.map(p => `
+    <div class="catalog-item">
+      <div class="meta">
+        <div class="name">${esc(p.brand)} ${esc(p.model)}</div>
+        <div class="sub">${esc(p.sku)} · ${p.stock_quantity} in stock · ${peso(p.selling_price)}</div>
+      </div>
+      <button class="btn" data-add="${p.product_id}">Add</button>
+    </div>`).join('') || `<div class="cart-empty">No matching in-stock items.</div>`;
+  $('#saleCatalog').querySelectorAll('[data-add]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const p = items.find(i => i.product_id === btn.dataset.add);
+      addToCart(p);
+    });
+  });
+}
+function addToCart(p){
+  const existing = state.cart.find(i => i.product_id === p.product_id);
+  if (existing){ if (existing.qty < p.stock_quantity) existing.qty++; else toast('No more stock for this item.'); }
+  else state.cart.push({ product_id:p.product_id, brand:p.brand, model:p.model, selling_price:p.selling_price, cost_price:p.cost_price, maxQty:p.stock_quantity, qty:1 });
+  renderCart();
+}
+function renderCart(){
+  const list = $('#cartList');
+  $('#cartCount').textContent = `${state.cart.length} item${state.cart.length===1?'':'s'}`;
+  list.innerHTML = state.cart.length ? state.cart.map((i,idx)=>`
+    <div class="cart-row">
+      <span>${esc(i.brand)} ${esc(i.model)} ${i.qty>1?`×${i.qty}`:''}</span>
+      <span style="display:flex;gap:8px;align-items:center">
+        <span class="num">${peso(i.selling_price*i.qty)}</span>
+        <button class="btn ghost" data-remove="${idx}" style="padding:2px 7px">✕</button>
+      </span>
+    </div>`).join('') : '<div class="cart-empty">Add a product from the left to start a sale.</div>';
+  list.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ state.cart.splice(Number(btn.dataset.remove),1); renderCart(); });
+  });
+  updateTotals();
+}
+function updateTotals(){
+  const subtotal = state.cart.reduce((s,i)=> s + i.selling_price*i.qty, 0);
+  const discount = Number($('#sumDiscount').value) || 0;
+  $('#sumSubtotal').textContent = peso(subtotal);
+  $('#sumTotal').textContent = peso(Math.max(0, subtotal - discount));
+}
+async function checkout(){
+  if (!state.cart.length) return toast('Add at least one item first.');
+  const btn = $('#checkoutBtn');
+  btn.disabled = true; btn.textContent = 'Processing…';
+  try{
+    const { transactionCode } = await db.createSale({
+      cashier: $('#cashier').value.trim(),
+      customerName: $('#custName').value.trim(),
+      customerContact: $('#custPhone').value.trim(),
+      paymentMethod: $('#payMethod').value,
+      discount: Number($('#sumDiscount').value) || 0,
+      items: state.cart
+    });
+    toast(`Sale recorded — ${transactionCode}`);
+    state.cart = []; $('#sumDiscount').value = 0; $('#custName').value=''; $('#custPhone').value='';
+    renderCart();
+    await renderSaleCatalog();
+  }catch(e){
+    toast('Checkout failed: ' + (e.message || e));
+  }finally{
+    btn.disabled = false; btn.textContent = 'Complete sale';
+  }
+}
+
+/* ---------- sales history ---------- */
+async function renderSalesHistory(){
+  const sales = await db.fetchSales();
+  $('#salesBody').innerHTML = sales.map(s => `
+    <tr>
+      <td class="num">${esc(s.transaction_code)}</td>
+      <td>${new Date(s.sold_at).toLocaleString('en-PH',{ month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</td>
+      <td>${esc(s.customer_name || 'Walk-in')}</td>
+      <td><span class="pill neutral">${esc((s.payment_method||'').replace('_',' '))}</span></td>
+      <td class="num">${s.item_count ?? '—'}</td>
+      <td class="num">${peso(s.total_amount)}</td>
+      <td class="num" style="color:var(--good)">${peso(s.total_profit)}</td>
+    </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:30px">No sales yet.</td></tr>`;
+}
+
+/* ---------- suppliers ---------- */
+async function renderSuppliers(){
+  const suppliers = await db.fetchSuppliers();
+  $('#supGrid').innerHTML = suppliers.map(s => `
+    <div class="card panel">
+      <h3>${esc(s.name)}</h3>
+      <div class="sub">${esc(s.contact_person || '')}</div>
+      <div style="font-size:13px;display:flex;flex-direction:column;gap:4px;margin-top:6px">
+        <span>${esc(s.phone || '—')}</span>
+        <span>${esc(s.email || '—')}</span>
+        <span style="color:var(--muted)">${esc(s.address || '')}</span>
+      </div>
+    </div>`).join('');
+}
+
+/* =====================================================================
+   WIRING
+   ===================================================================== */
+document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', ()=> switchView(btn.dataset.view)));
+$('#invSearch').addEventListener('input', debounce(()=>{ state.invPage=0; renderInventory(); }, 250));
+$('#invBrand').addEventListener('change', ()=>{ state.invPage=0; renderInventory(); });
+$('#invStatus').addEventListener('change', ()=>{ state.invPage=0; renderInventory(); });
+$('#invPrev').addEventListener('click', ()=>{ if(state.invPage>0){ state.invPage--; renderInventory(); } });
+$('#invNext').addEventListener('click', ()=>{ if((state.invPage+1)*PAGE_SIZE < state.invTotal){ state.invPage++; renderInventory(); } });
+$('#saleSearch').addEventListener('input', debounce(renderSaleCatalog, 250));
+$('#sumDiscount').addEventListener('input', updateTotals);
+$('#checkoutBtn').addEventListener('click', checkout);
+function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+
+$('#connBtn').addEventListener('click', ()=>{
+  $('#supaUrl').value = CONFIG.url; $('#supaKey').value = CONFIG.anonKey;
+  $('#connModal').hidden = false;
+});
+$('#connCancel').addEventListener('click', ()=> $('#connModal').hidden = true);
+$('#connDemo').addEventListener('click', ()=>{
+  try{ localStorage.removeItem('stockline_supabase'); }catch(e){}
+  CONFIG.url=''; CONFIG.anonKey=''; supa=null; currentUser=null;
+  reflectConnection(); reflectAuth();
+  $('#connModal').hidden = true; toast('Switched to demo data.'); switchView(state.view);
+});
+$('#connSave').addEventListener('click', ()=>{
+  const url = $('#supaUrl').value.trim(), key = $('#supaKey').value.trim();
+  if (!url || !key) return toast('Enter both the project URL and anon key.');
+  CONFIG.url = url; CONFIG.anonKey = key;
+  try{ localStorage.setItem('stockline_supabase', JSON.stringify({ url, anonKey:key })); }catch(e){}
+  const ok = initSupabaseClient();
+  reflectConnection();
+  checkAuthAndBoot();
+  $('#connModal').hidden = true;
+  toast(ok ? 'Connected to Supabase.' : 'Could not initialize client — check the values.');
+  switchView(state.view);
+});
+function reflectConnection(){
+  $('#connDot').className = 'dot ' + (supa ? 'live' : 'demo');
+  $('#connLabel').textContent = supa ? 'Connected — live data' : 'Demo data — not connected';
+}
+
+/* =====================================================================
+   STAFF SIGN-IN
+   Live mode (a real Supabase project connected) requires a signed-in
+   account — the app shows the sign-in screen and blocks the dashboard
+   until Supabase confirms a session. Demo mode has no real data behind
+   it, so it skips sign-in entirely.
+   Accounts are NOT self-serve: there's no sign-up form in this app on
+   purpose. Create staff logins yourself in Supabase, under
+   Authentication → Users → Add user.
+   ===================================================================== */
+let currentUser = null;
+
+function reflectAuth(){
+  const needsLogin = !!supa && !currentUser;
+  $('#authScreen').hidden = !needsLogin;
+  $('#signOutBtn').hidden = !(supa && currentUser);
+  if (needsLogin){ $('#authEmail').focus(); }
+}
+
+async function checkAuthAndBoot(){
+  if (!supa){ currentUser = null; reflectAuth(); return; }
+  const { data } = await supa.auth.getSession();
+  currentUser = data.session ? data.session.user : null;
+  reflectAuth();
+  supa.auth.onAuthStateChange((_event, session) => {
+    currentUser = session ? session.user : null;
+    reflectAuth();
+  });
+}
+
+$('#authSubmit').addEventListener('click', async ()=>{
+  const email = $('#authEmail').value.trim();
+  const password = $('#authPassword').value;
+  const errBox = $('#authError');
+  if (!email || !password){ errBox.textContent = 'Enter your email and password.'; return; }
+  const btn = $('#authSubmit');
+  btn.disabled = true; btn.textContent = 'Signing in…'; errBox.textContent = '';
+  const { error } = await supa.auth.signInWithPassword({ email, password });
+  btn.disabled = false; btn.textContent = 'Sign in';
+  if (error){ errBox.textContent = error.message; return; }
+  $('#authPassword').value = '';
+});
+$('#authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') $('#authSubmit').click(); });
+
+$('#signOutBtn').addEventListener('click', async ()=>{
+  if (supa) await supa.auth.signOut();
+  toast('Signed out.');
+});
+
+/* boot */
+loadSupabaseConfig();
+initSupabaseClient();
+reflectConnection();
+checkAuthAndBoot();
+switchView('dashboard');
+</script>
+
+</body></html>
