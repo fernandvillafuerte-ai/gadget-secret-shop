@@ -1,4 +1,3 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Gadget Secret Shop</title>
 <style>
 /* ======================================================================
@@ -291,6 +290,7 @@ label{font-size:11.5px;color:var(--muted);display:block;margin-bottom:4px}
           <option value="sold">Sold</option>
           <option value="defective">Defective</option>
         </select>
+        <button class="btn primary" id="addProductBtn" style="margin-left:auto">+ Add product</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -383,6 +383,41 @@ label{font-size:11.5px;color:var(--muted);display:block;margin-bottom:4px}
 </div>
 
 <div class="toast" id="toast" hidden></div>
+
+<!-- add product -->
+<div class="modal-backdrop" id="productModal" hidden>
+  <div class="modal" style="max-width:480px">
+    <h3>Add product</h3>
+    <div class="sub">Add one phone or accessory to your inventory.</div>
+    <div class="field-row">
+      <div><label for="pBrand">Brand</label><input class="input" id="pBrand" placeholder="e.g. Samsung"></div>
+      <div><label for="pModel">Model</label><input class="input" id="pModel" placeholder="e.g. Galaxy S24"></div>
+    </div>
+    <div class="field-row">
+      <div><label for="pVariant">Variant</label><input class="input" id="pVariant" placeholder="256GB / Black"></div>
+      <div><label for="pCondition">Condition</label>
+        <select id="pCondition"><option value="new">New</option><option value="used">Used</option><option value="refurbished">Refurbished</option></select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div><label for="pSku">SKU (stock code)</label><input class="input" id="pSku" placeholder="e.g. SAM-1001"></div>
+      <div><label for="pImei">IMEI</label><input class="input" id="pImei" placeholder="Leave blank for accessories"></div>
+    </div>
+    <div class="field-row">
+      <div><label for="pCost">Cost price (₱)</label><input class="input" id="pCost" type="number" min="0" placeholder="0"></div>
+      <div><label for="pPrice">Selling price (₱)</label><input class="input" id="pPrice" type="number" min="0" placeholder="0"></div>
+    </div>
+    <div class="field-row">
+      <div><label for="pStock">Stock quantity</label><input class="input" id="pStock" type="number" min="0" value="1"></div>
+      <div><label for="pSupplier">Supplier</label><select id="pSupplier"><option value="">— None —</option></select></div>
+    </div>
+    <div id="productError" style="color:var(--critical);font-size:12px;min-height:16px;margin:2px 0 10px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn ghost" id="productCancel">Cancel</button>
+      <button class="btn primary" id="productSave">Save product</button>
+    </div>
+  </div>
+</div>
 
 <!-- staff sign-in gate (live mode only; demo mode skips this) -->
 <div class="modal-backdrop" id="authScreen" hidden style="background:var(--bg);z-index:55">
@@ -492,9 +527,9 @@ function genDemoSales(){
 }
 const DEMO_SALES = genDemoSales();
 const DEMO_SUPPLIERS = [
-  { name:'TechSource Distribution', contact_person:'Ramon Alvarez', phone:'0917 220 4411', email:'sales@techsource.ph', address:'Binondo, Manila' },
-  { name:'MobileHub Wholesale', contact_person:'Grace Lim', phone:'0920 884 1190', email:'orders@mobilehub.ph', address:'Greenhills, San Juan' },
-  { name:'Metro Gadget Supply', contact_person:'Noel Ferrer', phone:'0908 331 7765', email:'noel@metrogadget.ph', address:'Cubao, Quezon City' }
+  { supplier_id:'demo-sup-0', name:'TechSource Distribution', contact_person:'Ramon Alvarez', phone:'0917 220 4411', email:'sales@techsource.ph', address:'Binondo, Manila' },
+  { supplier_id:'demo-sup-1', name:'MobileHub Wholesale', contact_person:'Grace Lim', phone:'0920 884 1190', email:'orders@mobilehub.ph', address:'Greenhills, San Juan' },
+  { supplier_id:'demo-sup-2', name:'Metro Gadget Supply', contact_person:'Noel Ferrer', phone:'0908 331 7765', email:'noel@metrogadget.ph', address:'Cubao, Quezon City' }
 ];
 
 /* ---------- unified data access ---------- */
@@ -604,6 +639,26 @@ const db = {
       return data;
     }
     return DEMO_SUPPLIERS;
+  },
+
+  async insertProduct(p){
+    if (supa){
+      // ---- REAL SUPABASE CALL ----
+      const { data, error } = await supa.from('products').insert([p]).select().single();
+      if (error) throw error;
+      return data;
+    }
+    // ---- demo fallback ----
+    const supplierName = p.supplier_id ? (DEMO_SUPPLIERS.find(s => s.supplier_id === p.supplier_id)?.name || '') : '';
+    const row = {
+      product_id: 'demo-new-' + Date.now(),
+      sku: p.sku, imei: p.imei || null, brand: p.brand, model: p.model, variant: p.variant || '',
+      condition: p.condition || 'new', cost_price: p.cost_price, selling_price: p.selling_price,
+      stock_quantity: p.stock_quantity, status: 'in_stock', supplier: supplierName,
+      date_acquired: new Date().toISOString().slice(0,10)
+    };
+    DEMO_PRODUCTS.unshift(row);
+    return row;
   }
 };
 
@@ -715,8 +770,10 @@ function drawTrendChart(days){
 async function populateBrandFilter(){
   const sel = $('#invBrand');
   if (sel.dataset.loaded) return;
+  const current = sel.value;
   const brands = await db.fetchAllBrands();
-  sel.insertAdjacentHTML('beforeend', brands.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join(''));
+  sel.innerHTML = '<option value="">All brands</option>' + brands.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+  sel.value = current;
   sel.dataset.loaded = '1';
 }
 async function renderInventory(){
@@ -855,6 +912,58 @@ $('#invBrand').addEventListener('change', ()=>{ state.invPage=0; renderInventory
 $('#invStatus').addEventListener('change', ()=>{ state.invPage=0; renderInventory(); });
 $('#invPrev').addEventListener('click', ()=>{ if(state.invPage>0){ state.invPage--; renderInventory(); } });
 $('#invNext').addEventListener('click', ()=>{ if((state.invPage+1)*PAGE_SIZE < state.invTotal){ state.invPage++; renderInventory(); } });
+
+/* ---------- add product ---------- */
+async function openProductModal(){
+  ['pBrand','pModel','pVariant','pSku','pImei','pCost','pPrice'].forEach(id => $('#'+id).value = '');
+  $('#pStock').value = 1; $('#pCondition').value = 'new'; $('#productError').textContent = '';
+  const sel = $('#pSupplier');
+  sel.innerHTML = '<option value="">— None —</option>';
+  try{
+    const suppliers = await db.fetchSuppliers();
+    suppliers.forEach(s => sel.insertAdjacentHTML('beforeend', `<option value="${esc(s.supplier_id)}">${esc(s.name)}</option>`));
+  }catch(e){ /* supplier list is optional, ignore failure */ }
+  $('#productModal').hidden = false;
+  $('#pBrand').focus();
+}
+$('#addProductBtn').addEventListener('click', openProductModal);
+$('#productCancel').addEventListener('click', ()=> $('#productModal').hidden = true);
+$('#productSave').addEventListener('click', async ()=>{
+  const errBox = $('#productError');
+  const brand = $('#pBrand').value.trim(), model = $('#pModel').value.trim();
+  const cost = Number($('#pCost').value), price = Number($('#pPrice').value), stock = Number($('#pStock').value);
+  let sku = $('#pSku').value.trim();
+  if (!brand || !model) return errBox.textContent = 'Brand and model are required.';
+  if (!$('#pCost').value || !$('#pPrice').value) return errBox.textContent = 'Enter a cost price and a selling price.';
+  if (cost < 0 || price < 0 || stock < 0) return errBox.textContent = 'Prices and stock can\'t be negative.';
+  if (!sku) sku = (brand.slice(0,3) + model.slice(0,3)).toUpperCase().replace(/[^A-Z0-9]/g,'') + '-' + Date.now().toString().slice(-5);
+
+  const btn = $('#productSave');
+  btn.disabled = true; btn.textContent = 'Saving…'; errBox.textContent = '';
+  try{
+    await db.insertProduct({
+      brand, model,
+      variant: $('#pVariant').value.trim() || null,
+      condition: $('#pCondition').value,
+      sku,
+      imei: $('#pImei').value.trim() || null,
+      cost_price: cost,
+      selling_price: price,
+      stock_quantity: stock,
+      status: 'in_stock',
+      supplier_id: $('#pSupplier').value || null
+    });
+    $('#productModal').hidden = true;
+    toast(`Added ${brand} ${model} to inventory.`);
+    $('#invBrand').dataset.loaded = ''; // let the brand filter pick up a possibly-new brand
+    state.invPage = 0;
+    await renderInventory();
+  }catch(e){
+    errBox.textContent = 'Could not save: ' + (e.message || e);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Save product';
+  }
+});
 $('#saleSearch').addEventListener('input', debounce(renderSaleCatalog, 250));
 $('#sumDiscount').addEventListener('input', updateTotals);
 $('#checkoutBtn').addEventListener('click', checkout);
@@ -944,5 +1053,3 @@ reflectConnection();
 checkAuthAndBoot();
 switchView('dashboard');
 </script>
-
-</body></html>
